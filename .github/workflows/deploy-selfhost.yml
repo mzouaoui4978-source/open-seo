@@ -1,0 +1,50 @@
+name: Deploy self-host (Hexeco)
+
+# Deploys OpenSEO to the owner's Cloudflare account (docs/SELF_HOSTING_CLOUDFLARE.md).
+# Needs three repository secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
+# DATAFORSEO_API_KEY.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/hopeful-edison-go75gk
+    paths:
+      - .github/workflows/deploy-selfhost.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-selfhost
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DATAFORSEO_API_KEY: ${{ secrets.DATAFORSEO_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Write .env.selfhost
+        run: |
+          test -n "$DATAFORSEO_API_KEY" || { echo "Secret DATAFORSEO_API_KEY manquant"; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Secret CLOUDFLARE_API_TOKEN manquant"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Secret CLOUDFLARE_ACCOUNT_ID manquant"; exit 1; }
+          printf 'DATAFORSEO_API_KEY=%s\nAUTH_MODE=password\n' "$DATAFORSEO_API_KEY" > .env.selfhost
+
+      - name: Deploy to Cloudflare
+        run: pnpm deploy:selfhost --yes
